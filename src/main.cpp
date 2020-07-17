@@ -24,6 +24,10 @@ Config cfg;
 uint32_t debugClock = 0;
 uint32_t debugClDiff = 0;
 
+volatile uint8_t uartCmdPos = 0;
+volatile char uartCmd[50];
+volatile bool uartCmdRdy = false;
+
 extern "C" {
 #include "interrupts.h"
 }
@@ -34,15 +38,16 @@ int main(void)
 	SystemInit();							// Activates floating point coprocessor and resets clock
 	SystemClock_Config();					// Configure the clock and PLL
 	SystemCoreClockUpdate();				// Update SystemCoreClock (system clock frequency) derived from settings of oscillators, prescalers and PLL
-	usb.InitUSB();
+	//usb.InitUSB();
 	InitSysTick();
+	InitUART();
 //	dacHandler.initDAC();
 //	InitUART();
 //	cfg.RestoreConfig();
 //	midiHandler.setConfig();
 
 	// Bind the usb.dataHandler function to the midiHandler's event handler
-	usb.dataHandler = std::bind(&MidiHandler::eventHandler, &midiHandler, std::placeholders::_1);
+	//usb.dataHandler = std::bind(&MidiHandler::eventHandler, &midiHandler, std::placeholders::_1);
 
 /*
 	// Little light show
@@ -60,6 +65,21 @@ int main(void)
 	{
 //		midiHandler.gateTimer();
 //		cfg.SaveConfig();		// Checks if configuration change is pending a save
+
+		// Check if a UART command has been received
+		if (uartCmdRdy) {
+			std::stringstream ss;
+			for (uint8_t c = 0; c < 22; ++c) {
+				if (uartCmd[c] == 10) {
+					//can.pendingCmd = ss.str();
+					uartSendString("Received: " + ss.str());
+					break;
+				}
+				else
+					ss << uartCmd[c];
+			}
+			uartCmdRdy = false;
+		}
 	}
 }
 

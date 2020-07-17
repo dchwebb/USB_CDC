@@ -192,28 +192,44 @@ void InitEncoders() {
 }
 
 void InitUART() {
-	// PC11 UART4_RX 79
-	// [PA1  UART4_RX 24 (AF8) ** NB Dev board seems to have something pulling this pin to ground so can't use]
+	// 446 Nucleo uses PD8 (TX) PD9 (RX) for USART3
 
-	RCC->APB1ENR |= RCC_APB1ENR_UART4EN;			// UART4 clock enable
+	RCC->APB1ENR |= RCC_APB1ENR_USART3EN;			// UART clock enable
+	RCC->AHB1ENR |= RCC_AHB1ENR_GPIODEN;			// GPIO port enable
 
-	GPIOC->MODER |= GPIO_MODER_MODER11_1;			// Set alternate function on PC11
-	GPIOC->AFR[1] |= 0b1000 << 12;					// Alternate function on PC11 for UART4_RX is 1000: AF8
+	GPIOD->MODER |= GPIO_MODER_MODER8_1;			// Set alternate function on PA9
+	GPIOD->AFR[1] |= 7 << GPIO_AFRH_AFSEL8_Pos;		// Alternate function on PD8 for UART3_TX is AF7
+	GPIOD->MODER |= GPIO_MODER_MODER9_1;			// Set alternate function on PA10
+	GPIOD->AFR[1] |= 7 << GPIO_AFRH_AFSEL9_Pos;		// Alternate function on PD9 for UART3_RX is AF7
 
-	int Baud = (SystemCoreClock / 4) / (16 * 31250);
-	UART4->BRR |= Baud << 4;						// Baud Rate (called USART_BRR_DIV_Mantissa) = (Sys Clock: 180MHz / APB1 Prescaler DIV4: 45MHz) / (16 * 31250) = 90
-	UART4->CR1 &= ~USART_CR1_M;						// Clear bit to set 8 bit word length
-	UART4->CR1 |= USART_CR1_RE;						// Receive enable
+	int Baud = (SystemCoreClock / 4) / (16 * 250000);		// NB must be an integer or timing will be out
+	//int Baud = (SystemCoreClock / 4) / (16 * 31250);
+	USART3->BRR |= Baud << 4;						// Baud Rate (called USART_BRR_DIV_Mantissa) = (Sys Clock: 180MHz / APB1 Prescaler DIV4: 45MHz) / (16 * 31250) = 90
+	USART3->CR1 &= ~USART_CR1_M;					// Clear bit to set 8 bit word length
+	USART3->CR1 |= USART_CR1_RE;					// Receive enable
+	USART3->CR1 |= USART_CR1_TE;					// Transmitter enable
 
 	// Set up interrupts
-	UART4->CR1 |= USART_CR1_RXNEIE;
-	NVIC_SetPriority(UART4_IRQn, 3);				// Lower is higher priority
-	NVIC_EnableIRQ(UART4_IRQn);
+	USART3->CR1 |= USART_CR1_RXNEIE;
+	NVIC_SetPriority(USART3_IRQn, 3);				// Lower is higher priority
+	NVIC_EnableIRQ(USART3_IRQn);
 
-	UART4->CR1 |= USART_CR1_UE;						// USART Enable
+	USART3->CR1 |= USART_CR1_UE;					// USART Enable
 
 }
 
+void uartSendChar(char c) {
+	while ((USART3->SR & USART_SR_TXE) == 0);
+	USART3->DR = c;
+}
+
+void uartSendString(const std::string& s) {
+	for (char c : s) {
+		while ((USART3->SR & USART_SR_TXE) == 0);
+		USART3->DR = c;
+	}
+
+}
 
 void InitDAC()
 {

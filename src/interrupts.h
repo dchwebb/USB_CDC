@@ -6,10 +6,20 @@ void SysTick_Handler(void) {
 	SysTickVal++;
 }
 
-// MIDI Decoder
-void UART4_IRQHandler(void) {
-	if (UART4->SR | USART_SR_RXNE) {
-		midiHandler.serialHandler(UART4->DR); 				// accessing DR automatically resets the receive flag
+void USART3_IRQHandler(void) {
+	/*if (USART3->SR | USART_SR_RXNE) {
+		uint32_t data = USART3->DR; 				// accessing DR automatically resets the receive flag
+	}*/
+
+
+	if (USART3->SR | USART_SR_RXNE && !uartCmdRdy) {
+		uartCmd[uartCmdPos] = USART3->DR; 				// accessing DR automatically resets the receive flag
+		if (uartCmd[uartCmdPos] == 10) {
+			uartCmdRdy = true;
+			uartCmdPos = 0;
+		} else {
+			uartCmdPos++;
+		}
 	}
 }
 
