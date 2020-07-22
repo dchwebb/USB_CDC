@@ -7,11 +7,6 @@ void SysTick_Handler(void) {
 }
 
 void USART3_IRQHandler(void) {
-	/*if (USART3->SR | USART_SR_RXNE) {
-		uint32_t data = USART3->DR; 				// accessing DR automatically resets the receive flag
-	}*/
-
-
 	if (USART3->SR | USART_SR_RXNE && !uartCmdRdy) {
 		uartCmd[uartCmdPos] = USART3->DR; 				// accessing DR automatically resets the receive flag
 		if (uartCmd[uartCmdPos] == 10) {

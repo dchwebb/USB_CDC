@@ -124,18 +124,33 @@ void USB::USBInterruptHandler() {
 			if ((ep_intr & 1) != 0) {
 				epint = USBx_OUTEP(epnum)->DOEPINT & USBx_DEVICE->DOEPMSK;
 
+				usbDebug[usbDebugNo - 1].endpoint = epnum;
+				usbDebug[usbDebugNo - 1].IntData = epint;
+
 				if ((epint & USB_OTG_DOEPINT_XFRC) == USB_OTG_DOEPINT_XFRC) {		// Transfer completed
 
 					USBx_OUTEP(epnum)->DOEPINT = USB_OTG_DOEPINT_XFRC;				// Clear interrupt
 
 					if (epnum == 0) {
+				        // After 0x21 0x20 packet
+						if (dev_state == USBD_STATE_CONFIGURED) {
+							int susp = 1;
+							if (CmdOpCode == 0x20) {			// SET_LINE_CODING - capture the data passed to return when queried with GET_LINE_CODING
+								for (uint8_t i = 0; i < outBuffSize; ++i) {
+									((uint8_t*)USBD_CDC_LineCoding)[i] = ((uint8_t*)xfer_buff)[i];
+								}
+							}
+							USB_EP0StartXfer(DIR_IN, 0, 0);
+						}
+
 						ep0_state = USBD_EP0_IDLE;
 						USBx_OUTEP(epnum)->DOEPCTL |= USB_OTG_DOEPCTL_STALL;
 					} else {
-						/*// Add buffer contents to midiArray
+						/*
+						// Add buffer contents to midiArray
 						midiArray[midiEventWrite++].data = *xfer_buff;
 						if (midiEventWrite >= MIDIBUFFERSIZE)	midiEventWrite = 0;
-*/
+						*/
 
 						uint32_t usbData = *xfer_buff;
 						//dataHandler(*xfer_buff);
@@ -144,7 +159,7 @@ void USB::USBInterruptHandler() {
 					}
 				}
 
-				if ((epint & USB_OTG_DOEPINT_STUP) == USB_OTG_DOEPINT_STUP) {		// SETUP phase done
+				if ((epint & USB_OTG_DOEPINT_STUP) == USB_OTG_DOEPINT_STUP) {		// SETUP phase done: the application can decode the received SETUP data packet.
 					// Parse Setup Request containing data in xfer_buff filled by RXFLVL interrupt
 					uint8_t *pdata = (uint8_t*)xfer_buff;
 					req.mRequest     = *(uint8_t *)  (pdata);
@@ -153,9 +168,11 @@ void USB::USBInterruptHandler() {
 					req.Index        = SWAPBYTE      (pdata +  4);
 					req.Length       = SWAPBYTE      (pdata +  6);
 
+					usbDebug[usbDebugNo - 1].Request = req;
+
 					ep0_state = USBD_EP0_SETUP;
 
-					if (usbEventNo > 78) {
+					if (usbEventNo == 85) {
 						int susp = 1;
 					}
 
@@ -167,10 +184,33 @@ void USB::USBInterruptHandler() {
 
 					case USB_REQ_RECIPIENT_INTERFACE:
 						if ((req.mRequest & USB_REQ_TYPE_MASK) == USB_REQ_TYPE_CLASS) {		// 0xA1 & 0x60 == 0x20
-							USB_EP0StartXfer(DIR_IN, 0, req.Length);		// sends blank request back
+							CmdOpCode = req.Request;
+							if (req.Length > 0) {
+								if ((req.mRequest & USB_REQ_DIRECTION_MASK) != 0U) {		// Device to host [USBD_CtlSendData]
+									// CDC request 0xA1, 0x21, 0x0, 0x0, 0x7		GetLineCoding 0xA1 0x21 0 Interface 7; Data: Line Coding Data Structure
+									// 0xA1 [1|01|00001] Device to host | Class | Interface
 
-						} else 	if (req.mRequest == 0x21) {
-							USB_EP0StartXfer(DIR_IN, 0, 0);		// sends blank request back
+									outBuffSize = req.Length;
+									outBuff = (uint8_t*)USBD_CDC_LineCoding;
+									ep0_state = USBD_EP0_DATA_IN;
+
+									usbDebug[usbDebugNo - 1].PacketSize = outBuffSize;
+									usbDebug[usbDebugNo - 1].xferBuff0 = ((uint32_t*)outBuff)[0];
+									usbDebug[usbDebugNo - 1].xferBuff1 = ((uint32_t*)outBuff)[1];
+
+									USB_EP0StartXfer(DIR_IN, 0, req.Length);		// sends blank request back
+								} else {
+									//CDC request 0x21, 0x20, 0x0, 0x0, 0x7			// USBD_CtlPrepareRx
+									// 0x21 [0|01|00001] Host to device | Class | Interface
+
+									USB_EP0StartXfer(DIR_OUT, epnum, req.Length);
+								}
+							} else {
+								// 0x21, 0x22, 0x0, 0x0, 0x0	SetControlLineState 0x21 | 0x22 | 2 | Interface | 0 | None
+								// 0x21, 0x20, 0x0, 0x0, 0x0	SetLineCoding       0x21 | 0x20 | 0 | Interface | 0 | Line Coding Data Structure
+								USB_EP0StartXfer(DIR_IN, 0, 0);
+							}
+
 						} else if (req.mRequest == 0x81) {
 
 							if (req.Value >> 8 == 0x22)		// 0x22 = CUSTOM_HID_REPORT_DESC
@@ -181,6 +221,9 @@ void USB::USBInterruptHandler() {
 								USB_EP0StartXfer(DIR_IN, 0, outBuffSize);
 							}
 						}
+						break;
+					case USB_REQ_RECIPIENT_ENDPOINT:
+						{int x = 1;}
 						break;
 
 					default:
@@ -210,8 +253,6 @@ void USB::USBInterruptHandler() {
 	///////////		40000 		IEPINT: IN endpoint interrupt
 	if (USB_ReadInterrupts(USB_OTG_GINTSTS_IEPINT))
 	{
-
-
 		// Read in the device interrupt bits [initially 1]
 		ep_intr = (USBx_DEVICE->DAINT & USBx_DEVICE->DAINTMSK) & 0xFFFFU;
 
@@ -219,8 +260,10 @@ void USB::USBInterruptHandler() {
 		epnum = 0;
 		while (ep_intr != 0) {
 			if ((ep_intr & 1) != 0) { // In ITR [initially true]
+				usbDebug[usbDebugNo - 1].endpoint = epnum;
 
 				epint = USBx_INEP((uint32_t)epnum)->DIEPINT & (USBx_DEVICE->DIEPMSK | (((USBx_DEVICE->DIEPEMPMSK >> (epnum & EP_ADDR_MSK)) & 0x1U) << 7));
+				usbDebug[usbDebugNo - 1].IntData = epint;
 
 				if ((epint & USB_OTG_DIEPINT_XFRC) == USB_OTG_DIEPINT_XFRC) {
 					uint32_t fifoemptymsk = (uint32_t)(0x1UL << (epnum & EP_ADDR_MSK));
@@ -289,24 +332,30 @@ void USB::USBInterruptHandler() {
 
 	}
 
-	///////////		10			RXFLVL: RxQLevel Interrupt
+	///////////		10			RXFLVL: RxQLevel Interrupt:  Rx FIFO non-empty Indicates that there is at least one packet pending to be read from the Rx FIFO.
 	if (USB_ReadInterrupts(USB_OTG_GINTSTS_RXFLVL))
 	{
 		USB_OTG_FS->GINTMSK &= ~USB_OTG_GINTSTS_RXFLVL;
 
-		uint32_t temp = USB_OTG_FS->GRXSTSP;		//OTG receive status debug read/OTG status read and	pop registers (OTG_GRXSTSR/OTG_GRXSTSP) not shown in SFR
+		uint32_t receiveStatus = USB_OTG_FS->GRXSTSP;		// OTG status read and pop register: not shown in SFR, but read only (ie do not pop) register under OTG_FS_GLOBAL->FS_GRXSTSR_Device
+		epnum = receiveStatus & USB_OTG_GRXSTSP_EPNUM;		// Get the endpoint number
 
-		// Get the endpoint number
-		epnum = temp & USB_OTG_GRXSTSP_EPNUM;
+		usbDebug[usbDebugNo - 1].IntData = receiveStatus;
+		usbDebug[usbDebugNo - 1].endpoint = epnum;
+		usbDebug[usbDebugNo - 1].PacketSize = (receiveStatus & USB_OTG_GRXSTSP_BCNT) >> 4;
 
-		if (((temp & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_DATA_UPDT) {
-			if ((temp & USB_OTG_GRXSTSP_BCNT) != 0)	{
-				USB_ReadPacket(xfer_buff, (temp & USB_OTG_GRXSTSP_BCNT) >> 4);
+		if (usbDebug[usbDebugNo - 1].PacketSize == 7) {
+			int susp = 1;
+		}
+		if (((receiveStatus & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_DATA_UPDT) {			// 2 = OUT data packet received
+			if ((receiveStatus & USB_OTG_GRXSTSP_BCNT) != 0)	{
+				USB_ReadPacket(xfer_buff, (receiveStatus & USB_OTG_GRXSTSP_BCNT) >> 4);
 			}
-		} else if (((temp & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_SETUP_UPDT) {
+		} else if (((receiveStatus & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_SETUP_UPDT) {	// 6 = SETUP data packet received
 			USB_ReadPacket(xfer_buff, 8U);
 		}
-
+		usbDebug[usbDebugNo - 1].xferBuff0 = xfer_buff[0];
+		usbDebug[usbDebugNo - 1].xferBuff1 = xfer_buff[1];
 		USB_OTG_FS->GINTMSK |= USB_OTG_GINTSTS_RXFLVL;
 	}
 
@@ -582,6 +631,10 @@ void USB::USBD_GetDescriptor(usbRequest req)
 	}
 
 	if ((outBuffSize != 0U) && (req.Length != 0U)) {
+		usbDebug[usbDebugNo - 1].PacketSize = outBuffSize;
+		usbDebug[usbDebugNo - 1].xferBuff0 = ((uint32_t*)outBuff)[0];
+		usbDebug[usbDebugNo - 1].xferBuff1 = ((uint32_t*)outBuff)[1];
+
 		ep0_state = USBD_EP0_DATA_IN;
 		outBuffSize = std::min(outBuffSize, (uint32_t)req.Length);
 		USB_EP0StartXfer(DIR_IN, 0, outBuffSize);
@@ -774,9 +827,11 @@ void USB::USBD_CtlError() {
 
 bool USB::USB_ReadInterrupts(uint32_t interrupt){
 
-	if (((USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK) & interrupt) == interrupt && usbEventNo < 200) {
+	if (((USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK) & interrupt) == interrupt && usbEventNo < USB_DEBUG_COUNT) {
 		usbEvents[usbEventNo] = USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK;
 		usbEventNo++;
+		usbDebug[usbDebugNo].Interrupt = USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK;
+		usbDebugNo++;
 	}
 
 	return ((USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK) & interrupt) == interrupt;

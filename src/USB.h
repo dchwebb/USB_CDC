@@ -6,8 +6,8 @@
 
 //union MidiData;
 
-extern uint32_t usbEvents[200], reqEvents[100];
-extern uint8_t usbEventNo, eventOcc, reqEventNo, midiEventNo, midiEventRead, midiEventWrite;
+extern uint8_t eventOcc, reqEventNo, midiEventNo, midiEventRead, midiEventWrite;
+extern uint16_t usbEventNo;
 //extern MidiData midiArray[MIDIBUFFERSIZE];
 
 // USB Definitions
@@ -38,6 +38,8 @@ extern uint8_t usbEventNo, eventOcc, reqEventNo, midiEventNo, midiEventRead, mid
 #define USB_REQ_TYPE_CLASS				0x20U
 #define USB_REQ_TYPE_VENDOR				0x40U
 #define USB_REQ_TYPE_MASK				0x60U
+
+#define USB_REQ_DIRECTION_MASK			0x80U
 
 #define USB_REQ_GET_STATUS				0x00U
 #define USB_REQ_CLEAR_FEATURE			0x01U
@@ -112,18 +114,18 @@ extern uint8_t usbEventNo, eventOcc, reqEventNo, midiEventNo, midiEventRead, mid
 #define USB_DEVICE_SUBCLASS_MIDISTREAMING      0x03
 
 // CD defines
-#define CDC_IN_EP                                   0x81U  /* EP1 for data IN */
-#define CDC_OUT_EP                                  0x01U  /* EP1 for data OUT */
-#define CDC_CMD_EP                                  0x82U  /* EP2 for CDC commands */
+#define CDC_IN_EP						0x81U  /* EP1 for data IN */
+#define CDC_OUT_EP						0x01U  /* EP1 for data OUT */
+#define CDC_CMD_EP						0x82U  /* EP2 for CDC commands */
 
-#define CDC_FS_BINTERVAL                            0x10U
+#define CDC_FS_BINTERVAL				0x10U
 
 /* CDC Endpoints parameters: you can fine tune these values depending on the needed baudrates and performance. */
-#define CDC_DATA_FS_MAX_PACKET_SIZE                 64U  /* Endpoint IN & OUT Packet size */
-#define CDC_CMD_PACKET_SIZE                         8U  /* Control Endpoint Packet size */
+#define CDC_DATA_FS_MAX_PACKET_SIZE		64U  /* Endpoint IN & OUT Packet size */
+#define CDC_CMD_PACKET_SIZE				8U  /* Control Endpoint Packet size */
 
-#define CDC_DATA_FS_IN_PACKET_SIZE                  CDC_DATA_FS_MAX_PACKET_SIZE
-#define CDC_DATA_FS_OUT_PACKET_SIZE                 CDC_DATA_FS_MAX_PACKET_SIZE
+#define CDC_DATA_FS_IN_PACKET_SIZE		CDC_DATA_FS_MAX_PACKET_SIZE
+#define CDC_DATA_FS_OUT_PACKET_SIZE		CDC_DATA_FS_MAX_PACKET_SIZE
 
 
 #define SWAPBYTE(addr)        (((uint16_t)(*((uint8_t *)(addr)))) + \
@@ -142,8 +144,24 @@ struct usbRequest {
 	uint16_t Length;
 };
 
+struct USBD_CDC_LineCodingTypeDef {
+	uint32_t bitrate;
+	uint8_t format;
+	uint8_t paritytype;
+	uint8_t datatype;
+};
 
-
+#define USB_DEBUG_COUNT 300
+extern uint32_t usbEvents[USB_DEBUG_COUNT];
+struct usbDebugItem {
+	uint32_t Interrupt;
+	uint32_t IntData;
+	usbRequest Request;
+	uint8_t endpoint;
+	uint16_t PacketSize;
+	uint32_t xferBuff0;
+	uint32_t xferBuff1;
+};
 
 typedef enum {
 	CUSTOM_HID_IDLE = 0U,
@@ -182,7 +200,11 @@ public:
 	uint32_t outCount;
 	uint32_t ep0_state;
 	uint8_t dev_state;
+	uint8_t CmdOpCode;			// stores class specific operation codes (eg CDC set line config)
 	CUSTOM_HID_StateTypeDef hid_state;
+
+	usbDebugItem usbDebug[300];
+	uint16_t usbDebugNo = 0;
 
 	// USB standard device descriptor - in usbd_desc.c
 	uint8_t USBD_FS_DeviceDesc[USB_LEN_DEV_DESC] = {
@@ -219,6 +241,25 @@ public:
 			0x01,
 			0x00,
 	};
+
+	/*LINE CODING DATA DETAILS
+	Offset	Field 		Size (Bytes) 	Description
+	0		dWDTERate 	4 				Data terminal rate in bits per sec.
+	4 		bCharFormat 1 				Stop Bits: 0-1 Stop Bit; 1-1.5 Stop Bits; 2-2 Stop Bits
+	5 		bParityType 1 				Parity: 0 = None; 1 = Odd; 2 = Even; 3 = Mark; 4 = Space; 6 bDataBits 1 Data bits
+	6		bDataBits	1 				Data bits (5, 6, 7,	8 or 16)
+	*/
+
+	USBD_CDC_LineCodingTypeDef USBD_CDC_LineCoding[7] = {
+			0x00,
+			0x00,
+			0x00,
+			0x00,
+			0x00,
+			0x00,
+			0x00
+	};
+
 
 	uint8_t USBD_CDC_CfgFSDesc[USB_CDC_CONFIG_DESC_SIZ] = {
 			// Configuration Descriptor
