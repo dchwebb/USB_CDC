@@ -111,6 +111,36 @@ void USB::USBInterruptHandler() {
 	if ((USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK) == 0)
 		return;
 
+
+	///////////		10			RXFLVL: RxQLevel Interrupt:  Rx FIFO non-empty Indicates that there is at least one packet pending to be read from the Rx FIFO.
+	if (USB_ReadInterrupts(USB_OTG_GINTSTS_RXFLVL))
+	{
+		USB_OTG_FS->GINTMSK &= ~USB_OTG_GINTSTS_RXFLVL;
+
+		uint32_t receiveStatus = USB_OTG_FS->GRXSTSP;		// OTG status read and pop register: not shown in SFR, but read only (ie do not pop) register under OTG_FS_GLOBAL->FS_GRXSTSR_Device
+		epnum = receiveStatus & USB_OTG_GRXSTSP_EPNUM;		// Get the endpoint number
+		uint16_t packetSize = (receiveStatus & USB_OTG_GRXSTSP_BCNT) >> 4;
+
+		usbDebug[usbDebugNo - 1].IntData = receiveStatus;
+		usbDebug[usbDebugNo - 1].endpoint = epnum;
+		usbDebug[usbDebugNo - 1].PacketSize = packetSize;
+
+		if (usbDebug[usbDebugNo - 1].PacketSize == 7) {
+			int susp = 1;
+		}
+		if (((receiveStatus & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_DATA_UPDT && packetSize != 0) {		// 2 = OUT data packet received
+			USB_ReadPacket(xfer_buff, packetSize);
+		} else if (((receiveStatus & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_SETUP_UPDT) {				// 6 = SETUP data packet received
+			USB_ReadPacket(xfer_buff, 8U);
+		}
+		if (packetSize != 0) {
+			usbDebug[usbDebugNo - 1].xferBuff0 = xfer_buff[0];
+			usbDebug[usbDebugNo - 1].xferBuff1 = xfer_buff[1];
+		}
+		USB_OTG_FS->GINTMSK |= USB_OTG_GINTSTS_RXFLVL;
+	}
+
+
 	/////////// 	80000 		OEPINT OUT endpoint interrupt
 	if (USB_ReadInterrupts(USB_OTG_GINTSTS_OEPINT)) {
 
@@ -131,16 +161,22 @@ void USB::USBInterruptHandler() {
 
 					USBx_OUTEP(epnum)->DOEPINT = USB_OTG_DOEPINT_XFRC;				// Clear interrupt
 
+					if (usbDebugNo > 110) {
+						int susp = 1;
+					}
+
 					if (epnum == 0) {
-				        // After 0x21 0x20 packet
-						if (dev_state == USBD_STATE_CONFIGURED) {
+				        // In CDC mode after 0x21 0x20 packets (line coding commands)
+						if (dev_state == USBD_STATE_CONFIGURED && CmdOpCode != 0) {
 							int susp = 1;
+
 							if (CmdOpCode == 0x20) {			// SET_LINE_CODING - capture the data passed to return when queried with GET_LINE_CODING
 								for (uint8_t i = 0; i < outBuffSize; ++i) {
 									((uint8_t*)USBD_CDC_LineCoding)[i] = ((uint8_t*)xfer_buff)[i];
 								}
 							}
 							USB_EP0StartXfer(DIR_IN, 0, 0);
+							CmdOpCode = 0;
 						}
 
 						ep0_state = USBD_EP0_IDLE;
@@ -172,7 +208,7 @@ void USB::USBInterruptHandler() {
 
 					ep0_state = USBD_EP0_SETUP;
 
-					if (usbEventNo == 85) {
+					if (req.Value == 0x300 && usbEventNo > 90) {
 						int susp = 1;
 					}
 
@@ -265,7 +301,7 @@ void USB::USBInterruptHandler() {
 				epint = USBx_INEP((uint32_t)epnum)->DIEPINT & (USBx_DEVICE->DIEPMSK | (((USBx_DEVICE->DIEPEMPMSK >> (epnum & EP_ADDR_MSK)) & 0x1U) << 7));
 				usbDebug[usbDebugNo - 1].IntData = epint;
 
-				if ((epint & USB_OTG_DIEPINT_XFRC) == USB_OTG_DIEPINT_XFRC) {
+				if ((epint & USB_OTG_DIEPINT_XFRC) == USB_OTG_DIEPINT_XFRC) {			// 0x1 Transfer completed interrupt
 					uint32_t fifoemptymsk = (uint32_t)(0x1UL << (epnum & EP_ADDR_MSK));
 					USBx_DEVICE->DIEPEMPMSK &= ~fifoemptymsk;
 
@@ -277,6 +313,11 @@ void USB::USBInterruptHandler() {
 							if (xfer_rem > 0) {
 								outBuffSize = xfer_rem;
 								xfer_rem = 0;
+
+								usbDebug[usbDebugNo - 1].PacketSize = outBuffSize;
+								usbDebug[usbDebugNo - 1].xferBuff0 = ((uint32_t*)outBuff)[0];
+								usbDebug[usbDebugNo - 1].xferBuff1 = ((uint32_t*)outBuff)[1];
+
 								USB_EP0StartXfer(DIR_IN, 0, outBuffSize);
 							} else {
 
@@ -297,7 +338,7 @@ void USB::USBInterruptHandler() {
 					}
 				}
 
-				if ((epint & USB_OTG_DIEPINT_TXFE) == USB_OTG_DIEPINT_TXFE) {
+				if ((epint & USB_OTG_DIEPINT_TXFE) == USB_OTG_DIEPINT_TXFE) {				// 0x80 Transmit FIFO empty
 					uint32_t maxPacket = (epnum == 0 ? ep0_maxPacket : ep_maxPacket);
 					if (outBuffSize > maxPacket) {
 						xfer_rem = outBuffSize - maxPacket;
@@ -312,7 +353,7 @@ void USB::USBInterruptHandler() {
 
 				}
 
-				if ((epint & USB_OTG_DIEPINT_TOC) == USB_OTG_DIEPINT_TOC) {
+				if ((epint & USB_OTG_DIEPINT_TOC) == USB_OTG_DIEPINT_TOC) {					// Timeout condition
 					USBx_INEP(epnum)->DIEPINT = USB_OTG_DIEPINT_TOC;
 				}
 				if ((epint & USB_OTG_DIEPINT_ITTXFE) == USB_OTG_DIEPINT_ITTXFE) {
@@ -332,32 +373,6 @@ void USB::USBInterruptHandler() {
 
 	}
 
-	///////////		10			RXFLVL: RxQLevel Interrupt:  Rx FIFO non-empty Indicates that there is at least one packet pending to be read from the Rx FIFO.
-	if (USB_ReadInterrupts(USB_OTG_GINTSTS_RXFLVL))
-	{
-		USB_OTG_FS->GINTMSK &= ~USB_OTG_GINTSTS_RXFLVL;
-
-		uint32_t receiveStatus = USB_OTG_FS->GRXSTSP;		// OTG status read and pop register: not shown in SFR, but read only (ie do not pop) register under OTG_FS_GLOBAL->FS_GRXSTSR_Device
-		epnum = receiveStatus & USB_OTG_GRXSTSP_EPNUM;		// Get the endpoint number
-
-		usbDebug[usbDebugNo - 1].IntData = receiveStatus;
-		usbDebug[usbDebugNo - 1].endpoint = epnum;
-		usbDebug[usbDebugNo - 1].PacketSize = (receiveStatus & USB_OTG_GRXSTSP_BCNT) >> 4;
-
-		if (usbDebug[usbDebugNo - 1].PacketSize == 7) {
-			int susp = 1;
-		}
-		if (((receiveStatus & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_DATA_UPDT) {			// 2 = OUT data packet received
-			if ((receiveStatus & USB_OTG_GRXSTSP_BCNT) != 0)	{
-				USB_ReadPacket(xfer_buff, (receiveStatus & USB_OTG_GRXSTSP_BCNT) >> 4);
-			}
-		} else if (((receiveStatus & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_SETUP_UPDT) {	// 6 = SETUP data packet received
-			USB_ReadPacket(xfer_buff, 8U);
-		}
-		usbDebug[usbDebugNo - 1].xferBuff0 = xfer_buff[0];
-		usbDebug[usbDebugNo - 1].xferBuff1 = xfer_buff[1];
-		USB_OTG_FS->GINTMSK |= USB_OTG_GINTSTS_RXFLVL;
-	}
 
 	/////////// 	800 		USBSUSP: Suspend Interrupt
 	if (USB_ReadInterrupts(USB_OTG_GINTSTS_USBSUSP))
@@ -592,19 +607,19 @@ void USB::USBD_GetDescriptor(usbRequest req)
 	case USB_DESC_TYPE_STRING:
 
 		switch ((uint8_t)(req.Value)) {
-		case USBD_IDX_LANGID_STR:
+		case USBD_IDX_LANGID_STR:		// 300
 			outBuff = USBD_LangIDDesc;
 			outBuffSize = sizeof(USBD_LangIDDesc);
 			break;
-		case USBD_IDX_MFC_STR:
+		case USBD_IDX_MFC_STR:			// 301
 			outBuffSize = USBD_GetString((uint8_t *)USBD_MANUFACTURER_STRING, USBD_StrDesc);
 			outBuff = USBD_StrDesc;
 			break;
-		case USBD_IDX_PRODUCT_STR:
+		case USBD_IDX_PRODUCT_STR:		// 302
 			outBuffSize = USBD_GetString((uint8_t *)USBD_PRODUCT_STRING_FS, USBD_StrDesc);
 			outBuff = USBD_StrDesc;
 			break;
-		case USBD_IDX_SERIAL_STR:
+		case USBD_IDX_SERIAL_STR:		// 303
 			// STM32 unique device ID (96 bit number starting at UID_BASE)
 			deviceserial0 = *(uint32_t *) UID_BASE;
 			deviceserial1 = *(uint32_t *) UID_BASE + 4;
