@@ -103,7 +103,7 @@
 
 */
 
-void USB::USBInterruptHandler() {
+void USB::USBInterruptHandler() {		// In Drivers\STM32F4xx_HAL_Driver\Src\stm32f4xx_hal_pcd.c
 
 	int epnum, ep_intr, epint;
 
@@ -111,6 +111,7 @@ void USB::USBInterruptHandler() {
 	if ((USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK) == 0)
 		return;
 
+	int tempint = USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK;
 
 	///////////		10			RXFLVL: RxQLevel Interrupt:  Rx FIFO non-empty Indicates that there is at least one packet pending to be read from the Rx FIFO.
 	if (USB_ReadInterrupts(USB_OTG_GINTSTS_RXFLVL))
@@ -125,7 +126,7 @@ void USB::USBInterruptHandler() {
 		usbDebug[usbDebugNo - 1].endpoint = epnum;
 		usbDebug[usbDebugNo - 1].PacketSize = packetSize;
 
-		if (usbDebug[usbDebugNo - 1].PacketSize == 7) {
+		if (usbEventNo > 254) {
 			int susp = 1;
 		}
 		if (((receiveStatus & USB_OTG_GRXSTSP_PKTSTS) >> 17) == STS_DATA_UPDT && packetSize != 0) {		// 2 = OUT data packet received
@@ -134,6 +135,7 @@ void USB::USBInterruptHandler() {
 			USB_ReadPacket(xfer_buff, 8U);
 		}
 		if (packetSize != 0) {
+			xfer_count = packetSize;
 			usbDebug[usbDebugNo - 1].xferBuff0 = xfer_buff[0];
 			usbDebug[usbDebugNo - 1].xferBuff1 = xfer_buff[1];
 		}
@@ -147,7 +149,6 @@ void USB::USBInterruptHandler() {
 		// Read the output endpoint interrupt register to ascertain which endpoint(s) fired an interrupt
 		ep_intr = ((USBx_DEVICE->DAINT & USBx_DEVICE->DAINTMSK) & 0xFFFF0000U) >> 16; // FIXME mask unnecessary with shift right?
 
-
 		// process each endpoint in turn incrementing the epnum and checking the interrupts (ep_intr) if that endpoint fired
 		epnum = 0;
 		while (ep_intr != 0) {
@@ -157,15 +158,12 @@ void USB::USBInterruptHandler() {
 				usbDebug[usbDebugNo - 1].endpoint = epnum;
 				usbDebug[usbDebugNo - 1].IntData = epint;
 
-				if ((epint & USB_OTG_DOEPINT_XFRC) == USB_OTG_DOEPINT_XFRC) {		// Transfer completed
+				if ((epint & USB_OTG_DOEPINT_XFRC) == USB_OTG_DOEPINT_XFRC) {		// 0x01 Transfer completed
 
 					USBx_OUTEP(epnum)->DOEPINT = USB_OTG_DOEPINT_XFRC;				// Clear interrupt
 
-					if (usbDebugNo > 110) {
-						int susp = 1;
-					}
-
 					if (epnum == 0) {
+
 				        // In CDC mode after 0x21 0x20 packets (line coding commands)
 						if (dev_state == USBD_STATE_CONFIGURED && CmdOpCode != 0) {
 							int susp = 1;
@@ -191,7 +189,8 @@ void USB::USBInterruptHandler() {
 						uint32_t usbData = *xfer_buff;
 						//dataHandler(*xfer_buff);
 
-						USB_EP0StartXfer(DIR_OUT, epnum, 0);
+						USB_EP0StartXfer(DIR_OUT, epnum, xfer_count);
+						int susp = 1;
 					}
 				}
 
@@ -220,7 +219,7 @@ void USB::USBInterruptHandler() {
 
 					case USB_REQ_RECIPIENT_INTERFACE:
 						if ((req.mRequest & USB_REQ_TYPE_MASK) == USB_REQ_TYPE_CLASS) {		// 0xA1 & 0x60 == 0x20
-							CmdOpCode = req.Request;
+
 							if (req.Length > 0) {
 								if ((req.mRequest & USB_REQ_DIRECTION_MASK) != 0U) {		// Device to host [USBD_CtlSendData]
 									// CDC request 0xA1, 0x21, 0x0, 0x0, 0x7		GetLineCoding 0xA1 0x21 0 Interface 7; Data: Line Coding Data Structure
@@ -238,7 +237,7 @@ void USB::USBInterruptHandler() {
 								} else {
 									//CDC request 0x21, 0x20, 0x0, 0x0, 0x7			// USBD_CtlPrepareRx
 									// 0x21 [0|01|00001] Host to device | Class | Interface
-
+									CmdOpCode = req.Request;
 									USB_EP0StartXfer(DIR_OUT, epnum, req.Length);
 								}
 							} else {
@@ -340,10 +339,18 @@ void USB::USBInterruptHandler() {
 
 				if ((epint & USB_OTG_DIEPINT_TXFE) == USB_OTG_DIEPINT_TXFE) {				// 0x80 Transmit FIFO empty
 					uint32_t maxPacket = (epnum == 0 ? ep0_maxPacket : ep_maxPacket);
+					if (usbEventNo > 250) {
+						int susp = 1;
+					}
+					usbDebug[usbDebugNo - 1].PacketSize = outBuffSize;
+					usbDebug[usbDebugNo - 1].xferBuff0 = ((uint32_t*)outBuff)[0];
+					usbDebug[usbDebugNo - 1].xferBuff1 = ((uint32_t*)outBuff)[1];
+
 					if (outBuffSize > maxPacket) {
 						xfer_rem = outBuffSize - maxPacket;
 						outBuffSize = maxPacket;
 					}
+
 
 					USB_WritePacket(outBuff, epnum, (uint16_t)outBuffSize);
 
@@ -534,7 +541,7 @@ void USB::InitUSB()
 void USB::USB_ActivateEndpoint(uint32_t epnum, bool is_in, uint8_t eptype)
 {
 	uint8_t maxpktsize = (epnum == 0 ? ep0_maxPacket : ep_maxPacket);
-
+// FIXME is_in should be deducable from epnum & 0x80 = in?? But then need to strip 0x80
 	if (is_in) {
 		USBx_DEVICE->DAINTMSK |= USB_OTG_DAINTMSK_IEPM & (uint32_t)(1UL << (epnum & EP_ADDR_MSK));
 
@@ -633,6 +640,15 @@ void USB::USBD_GetDescriptor(usbRequest req)
 			outBuff = USBD_StringSerial;
 			outBuffSize = sizeof(USBD_StringSerial);
 			break;
+	    case USBD_IDX_CONFIG_STR:		// 304
+			outBuffSize = USBD_GetString((uint8_t *)USBD_CONFIG_FS, USBD_StrDesc);
+			outBuff = USBD_StrDesc;
+	      break;
+
+	    case USBD_IDX_INTERFACE_STR:	// 305
+			outBuffSize = USBD_GetString((uint8_t *)USBD_INTERFACE_FS, USBD_StrDesc);
+			outBuff = USBD_StrDesc;
+	      break;
 
 		default:
 			USBD_CtlError();
@@ -721,10 +737,12 @@ void USB::USBD_StdDevReq(usbRequest req)
 			if (dev_state == USBD_STATE_ADDRESSED) {
 				dev_state = USBD_STATE_CONFIGURED;
 
-				USB_ActivateEndpoint(req.Value, true, USBD_EP_TYPE_INTR);		// Activate in endpoint
+				USB_ActivateEndpoint(req.Value, true, USBD_EP_TYPE_INTR);		// Activate in endpoint FIXME epno should be 0x81?
 				USB_ActivateEndpoint(req.Value, false, USBD_EP_TYPE_INTR);		// Activate out endpoint
+				USB_ActivateEndpoint(0x2, true, USBD_EP_TYPE_INTR);				// Activate Command IN EP FIXME Packet size 8
 
-				USB_EP0StartXfer(DIR_OUT, req.Value, 2);		// FIXME maxpacket is 2 for EP 1: CUSTOM_HID_EPIN_SIZE
+
+				USB_EP0StartXfer(DIR_OUT, req.Value, 0x40);		// FIXME maxpacket is 2 for EP 1: CUSTOM_HID_EPIN_SIZE, 0x40 = CDC_DATA_FS_OUT_PACKET_SIZE
 
 				ep0_state = USBD_EP0_STATUS_IN;
 				USB_EP0StartXfer(DIR_IN, 0, 0);

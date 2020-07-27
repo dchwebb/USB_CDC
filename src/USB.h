@@ -106,6 +106,8 @@ extern uint16_t usbEventNo;
 #define USBD_MANUFACTURER_STRING		"Mountjoy Modular"
 #define USBD_PID_FS						22352
 #define USBD_PRODUCT_STRING_FS			"Mountjoy MIDI"
+#define USBD_CONFIG_FS					"CDC Config"
+#define USBD_INTERFACE_FS				"CDC Interface"
 
 #define CLASS_SPECIFIC_DESC_SIZE		(7+6+9+9+5+9+5)
 #define MIDI_CONFIG_DESC_SIZE 			(9+9+9+9+CLASS_SPECIFIC_DESC_SIZE)
@@ -151,7 +153,7 @@ struct USBD_CDC_LineCodingTypeDef {
 	uint8_t datatype;
 };
 
-#define USB_DEBUG_COUNT 300
+#define USB_DEBUG_COUNT 400
 extern uint32_t usbEvents[USB_DEBUG_COUNT];
 struct usbDebugItem {
 	uint32_t Interrupt;
@@ -203,7 +205,7 @@ public:
 	uint8_t CmdOpCode;			// stores class specific operation codes (eg CDC set line config)
 	CUSTOM_HID_StateTypeDef hid_state;
 
-	usbDebugItem usbDebug[300];
+	usbDebugItem usbDebug[USB_DEBUG_COUNT];
 	uint16_t usbDebugNo = 0;
 
 	// USB standard device descriptor - in usbd_desc.c
