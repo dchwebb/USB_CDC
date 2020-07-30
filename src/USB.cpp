@@ -737,8 +737,8 @@ void USB::USBD_StdDevReq(usbRequest req)
 			if (dev_state == USBD_STATE_ADDRESSED) {
 				dev_state = USBD_STATE_CONFIGURED;
 
-				USB_ActivateEndpoint(req.Value, true, USBD_EP_TYPE_INTR);		// Activate in endpoint FIXME epno should be 0x81?
-				USB_ActivateEndpoint(req.Value, false, USBD_EP_TYPE_INTR);		// Activate out endpoint
+				USB_ActivateEndpoint(req.Value, true, USBD_EP_TYPE_BULK);		// Activate in endpoint FIXME epno should be 0x81?
+				USB_ActivateEndpoint(req.Value, false, USBD_EP_TYPE_BULK);		// Activate out endpoint
 				USB_ActivateEndpoint(0x2, true, USBD_EP_TYPE_INTR);				// Activate Command IN EP FIXME Packet size 8
 
 
