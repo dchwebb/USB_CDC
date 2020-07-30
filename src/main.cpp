@@ -86,7 +86,10 @@ void dumpArray() {
 	}
 }
 
-
+void usbSerialdata(uint8_t* datain, uint32_t size) {
+//	uartSendStr(IntToString(size) + ":" + HexToString(datain[0], true) + "\n");
+	uartSendStr(IntToString(size) + ":" + std::string((char*)datain, size) + "\n");
+}
 
 extern uint32_t SystemCoreClock;
 int main(void)
@@ -107,6 +110,7 @@ int main(void)
 	// Bind the usb.dataHandler function to the midiHandler's event handler
 	//usb.dataHandler = std::bind(&MidiHandler::eventHandler, &midiHandler, std::placeholders::_1);
 
+	usb.dataHandler = std::bind(usbSerialdata, std::placeholders::_1, std::placeholders::_2);
 
 	while (1)
 	{
