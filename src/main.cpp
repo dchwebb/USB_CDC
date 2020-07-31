@@ -66,8 +66,9 @@ void uartSendStr(const std::string& s) {
 }
 
 void dumpArray(std::string loopback) {
-	uartSendStr("Event,Interrupt,Int Data,Endpoint,mRequest,Request,Value,Index,Length,PacketSize,XferBuff0,XferBuff1\n");
+	usb.SendData((uint8_t*)loopback.c_str(), loopback.length());
 
+	uartSendStr("Event,Interrupt,Int Data,Endpoint,mRequest,Request,Value,Index,Length,PacketSize,XferBuff0,XferBuff1\n");
 	uint16_t evNo = usb.usbDebugEvent % USB_DEBUG_COUNT;
 
 	for (int i = 0; i < USB_DEBUG_COUNT; ++i) {
@@ -87,8 +88,6 @@ void dumpArray(std::string loopback) {
 		}
 		evNo = (evNo + 1) % USB_DEBUG_COUNT;
 	}
-	uint8_t testdata[] = "Test Data\n";
-	//usb.SendData((uint8_t*)loopback.c_str(), loopback.length());
 }
 
 void usbSerialdata(uint8_t* datain, uint32_t size) {

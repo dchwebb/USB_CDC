@@ -126,7 +126,7 @@ extern uint16_t usbEventNo;
 #define CDC_DATA_FS_OUT_PACKET_SIZE		CDC_DATA_FS_MAX_PACKET_SIZE
 
 
-#define SWAPBYTE(addr)        (((uint16_t)(*((uint8_t *)(addr)))) + (((uint16_t)(*(((uint8_t *)(addr)) + 1U))) << 8U))
+//#define SWAPBYTE(addr)        (((uint16_t)(*((uint8_t *)(addr)))) + (((uint16_t)(*(((uint8_t *)(addr)) + 1U))) << 8U))
 #define LOBYTE(x)  ((uint8_t)(x & 0x00FFU))
 #define HIBYTE(x)  ((uint8_t)((x & 0xFF00U) >> 8U))
 
@@ -139,6 +139,14 @@ struct usbRequest {
 	uint16_t Value;
 	uint16_t Index;
 	uint16_t Length;
+
+	void loadData(uint8_t* data) {
+		mRequest = data[0];
+		Request = data[1];
+		Value = (uint16_t)(data[2]) + (data[3] << 8);
+		Index = (uint16_t)(data[4]) + (data[5] << 8);
+		Length = (uint16_t)(data[6]) + (data[7] << 8);
+	}
 };
 
 struct USBD_CDC_LineCodingTypeDef {
@@ -161,12 +169,6 @@ struct usbDebugItem {
 	uint32_t xferBuff1;
 };
 
-/*
-typedef enum {
-	CUSTOM_HID_IDLE = 0U,
-	CUSTOM_HID_BUSY,
-} CUSTOM_HID_StateTypeDef;
-*/
 
 class USB {
 public:

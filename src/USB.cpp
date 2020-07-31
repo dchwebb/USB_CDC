@@ -185,12 +185,7 @@ void USB::USBInterruptHandler() {		// In Drivers\STM32F4xx_HAL_Driver\Src\stm32f
 
 				if ((epint & USB_OTG_DOEPINT_STUP) == USB_OTG_DOEPINT_STUP) {		// SETUP phase done: the application can decode the received SETUP data packet.
 					// Parse Setup Request containing data in xfer_buff filled by RXFLVL interrupt
-					uint8_t *pdata = (uint8_t*)xfer_buff;
-					req.mRequest     = *(uint8_t*)  (pdata);
-					req.Request      = *(uint8_t*)  (pdata +  1);
-					req.Value        = SWAPBYTE     (pdata +  2);
-					req.Index        = SWAPBYTE     (pdata +  4);
-					req.Length       = SWAPBYTE     (pdata +  6);
+					req.loadData((uint8_t*)xfer_buff);
 
 					usbDebug[usbDebugNo].Request = req;
 
@@ -344,13 +339,13 @@ void USB::USBInterruptHandler() {		// In Drivers\STM32F4xx_HAL_Driver\Src\stm32f
 				if ((epint & USB_OTG_DIEPINT_TOC) == USB_OTG_DIEPINT_TOC) {					// Timeout condition
 					USBx_INEP(epnum)->DIEPINT = USB_OTG_DIEPINT_TOC;
 				}
-				if ((epint & USB_OTG_DIEPINT_ITTXFE) == USB_OTG_DIEPINT_ITTXFE) {
+				if ((epint & USB_OTG_DIEPINT_ITTXFE) == USB_OTG_DIEPINT_ITTXFE) {			// IN token received when Tx FIFO is empty
 					USBx_INEP(epnum)->DIEPINT = USB_OTG_DIEPINT_ITTXFE;
 				}
-				if ((epint & USB_OTG_DIEPINT_INEPNE) == USB_OTG_DIEPINT_INEPNE) {
+				if ((epint & USB_OTG_DIEPINT_INEPNE) == USB_OTG_DIEPINT_INEPNE) {			// IN endpoint NAK effective
 					USBx_INEP(epnum)->DIEPINT = USB_OTG_DIEPINT_INEPNE;
 				}
-				if ((epint & USB_OTG_DIEPINT_EPDISD) == USB_OTG_DIEPINT_EPDISD) {
+				if ((epint & USB_OTG_DIEPINT_EPDISD) == USB_OTG_DIEPINT_EPDISD) {			// Endpoint disabled interrupt
 					USBx_INEP(epnum)->DIEPINT = USB_OTG_DIEPINT_EPDISD;
 				}
 
