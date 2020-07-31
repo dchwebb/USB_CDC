@@ -147,7 +147,7 @@ void MidiHandler::eventHandler(const uint32_t& data)
 				tx.configValue = cvOutputs[midiEvent.db1 - 9].controller;
 			}
 
-			usb.SendReport((uint8_t*) &tx, 4);
+			usb.SendData((uint8_t*) &tx, 4);
 		} else {
 			// configuration changed by editor format is ttttoooo vvvvvvvv where t is type of setting, o is output number (1-8 = gate, 9 - 12 = cv) and v is setting value
 			if (midiEvent.cfgChannelOrOutput < 9) {

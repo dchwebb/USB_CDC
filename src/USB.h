@@ -2,13 +2,9 @@
 
 #include "initialisation.h"
 #include <functional>
-//#include "MidiHandler.h"
 
-//union MidiData;
-
-extern uint8_t eventOcc, reqEventNo, midiEventNo, midiEventRead, midiEventWrite;
+//extern uint8_t eventOcc, reqEventNo, midiEventNo, midiEventRead, midiEventWrite;
 extern uint16_t usbEventNo;
-//extern MidiData midiArray[MIDIBUFFERSIZE];
 
 // USB Definitions
 #define USBx_PCGCCTL    *(__IO uint32_t *)(USB_OTG_FS_PERIPH_BASE + USB_OTG_PCGCCTL_BASE)
@@ -116,22 +112,21 @@ extern uint16_t usbEventNo;
 #define USB_DEVICE_SUBCLASS_MIDISTREAMING      0x03
 
 // CD defines
-#define CDC_IN_EP						0x81U  /* EP1 for data IN */
-#define CDC_OUT_EP						0x01U  /* EP1 for data OUT */
-#define CDC_CMD_EP						0x82U  /* EP2 for CDC commands */
+#define CDC_IN_EP						0x81U  // EP1 for data IN
+#define CDC_OUT_EP						0x01U  // EP1 for data OUT
+#define CDC_CMD_EP						0x82U  // EP2 for CDC commands
 
 #define CDC_FS_BINTERVAL				0x10U
 
 /* CDC Endpoints parameters: you can fine tune these values depending on the needed baudrates and performance. */
-#define CDC_DATA_FS_MAX_PACKET_SIZE		64U  /* Endpoint IN & OUT Packet size */
-#define CDC_CMD_PACKET_SIZE				8U  /* Control Endpoint Packet size */
+#define CDC_DATA_FS_MAX_PACKET_SIZE		64U 	// Endpoint IN & OUT Packet size
+#define CDC_CMD_PACKET_SIZE				8U  	// Control Endpoint Packet size
 
 #define CDC_DATA_FS_IN_PACKET_SIZE		CDC_DATA_FS_MAX_PACKET_SIZE
 #define CDC_DATA_FS_OUT_PACKET_SIZE		CDC_DATA_FS_MAX_PACKET_SIZE
 
 
-#define SWAPBYTE(addr)        (((uint16_t)(*((uint8_t *)(addr)))) + \
-		(((uint16_t)(*(((uint8_t *)(addr)) + 1U))) << 8U))
+#define SWAPBYTE(addr)        (((uint16_t)(*((uint8_t *)(addr)))) + (((uint16_t)(*(((uint8_t *)(addr)) + 1U))) << 8U))
 #define LOBYTE(x)  ((uint8_t)(x & 0x00FFU))
 #define HIBYTE(x)  ((uint8_t)((x & 0xFF00U) >> 8U))
 
@@ -154,8 +149,9 @@ struct USBD_CDC_LineCodingTypeDef {
 };
 
 #define USB_DEBUG_COUNT 400
-extern uint32_t usbEvents[USB_DEBUG_COUNT];
+
 struct usbDebugItem {
+	uint16_t eventNo;
 	uint32_t Interrupt;
 	uint32_t IntData;
 	usbRequest Request;
@@ -165,11 +161,12 @@ struct usbDebugItem {
 	uint32_t xferBuff1;
 };
 
+/*
 typedef enum {
 	CUSTOM_HID_IDLE = 0U,
 	CUSTOM_HID_BUSY,
-}
-CUSTOM_HID_StateTypeDef;
+} CUSTOM_HID_StateTypeDef;
+*/
 
 class USB {
 public:
@@ -186,7 +183,7 @@ public:
 	bool USB_ReadInterrupts(uint32_t interrupt);
 	void IntToUnicode(uint32_t value, uint8_t * pbuf, uint8_t len);
 	uint32_t USBD_GetString(uint8_t *desc, uint8_t *unicode);
-	void SendReport(uint8_t *report, uint16_t len);
+	void SendData(const uint8_t *data, uint16_t len);
 
 	std::function<void(uint8_t*,uint32_t)> dataHandler;	// Declare data handler to store incoming data
 
@@ -196,17 +193,17 @@ public:
 	uint32_t xfer_buff[32];		// in HAL there is a transfer buffer for each in and out endpoint
 	uint32_t xfer_count;
 	uint32_t xfer_rem;			// If transfer is larger than maximum packet size store remaining byte count
-	//	FIXME - should there be one of these output buffers for each endpoint?
 	uint8_t* outBuff;
 	uint32_t outBuffSize;
 	uint32_t outCount;
 	uint32_t ep0_state;
 	uint8_t dev_state;
 	uint8_t CmdOpCode;			// stores class specific operation codes (eg CDC set line config)
-	CUSTOM_HID_StateTypeDef hid_state;
+	bool transmitting;
 
 	usbDebugItem usbDebug[USB_DEBUG_COUNT];
 	uint16_t usbDebugNo = 0;
+	uint16_t usbDebugEvent = 0;
 
 	// USB standard device descriptor - in usbd_desc.c
 	uint8_t USBD_FS_DeviceDesc[USB_LEN_DEV_DESC] = {
@@ -251,7 +248,6 @@ public:
 	5 		bParityType 1 				Parity: 0 = None; 1 = Odd; 2 = Even; 3 = Mark; 4 = Space; 6 bDataBits 1 Data bits
 	6		bDataBits	1 				Data bits (5, 6, 7,	8 or 16)
 	*/
-
 	USBD_CDC_LineCodingTypeDef USBD_CDC_LineCoding[7] = {
 			0x00,
 			0x00,

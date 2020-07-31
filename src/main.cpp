@@ -8,8 +8,7 @@
 #include <iomanip>
 
 USB usb;
-uint32_t usbEvents[USB_DEBUG_COUNT];
-uint16_t usbEventNo = 0;
+
 
 uint8_t midiEventRead = 0;
 uint8_t midiEventWrite = 0;
@@ -66,28 +65,33 @@ void uartSendStr(const std::string& s) {
 	}
 }
 
-void dumpArray() {
+void dumpArray(std::string loopback) {
 	uartSendStr("Event,Interrupt,Int Data,Endpoint,mRequest,Request,Value,Index,Length,PacketSize,XferBuff0,XferBuff1\n");
 
-	for (int i = 0; i < usbEventNo; ++i) {
-		//uartSendStr(IntToString(i) + "," + HexToString(usbEvents[i], false) + "," + HexByte(usbReqs[i].mRequest) + ", " + HexByte(usbReqs[i].Request) + ", " + HexByte(usbReqs[i].Value) + ", " + HexByte(usbReqs[i].Index) + ", " + HexByte(usbReqs[i].Length) + "\n");
-		uartSendStr(IntToString(i) + ","
-				+ HexToString(usb.usbDebug[i].Interrupt, false) + ","
-				+ HexToString(usb.usbDebug[i].IntData, false) + ","
-				+ IntToString(usb.usbDebug[i].endpoint) + ","
-				+ HexByte(usb.usbDebug[i].Request.mRequest) + ", "
-				+ HexByte(usb.usbDebug[i].Request.Request) + ", "
-				+ HexByte(usb.usbDebug[i].Request.Value) + ", "
-				+ HexByte(usb.usbDebug[i].Request.Index) + ", "
-				+ HexByte(usb.usbDebug[i].Request.Length) + ", "
-				+ HexByte(usb.usbDebug[i].PacketSize) + ", "
-				+ HexToString(usb.usbDebug[i].xferBuff0, false) + ", "
-				+ HexToString(usb.usbDebug[i].xferBuff1, false) + "\n");
+	uint16_t evNo = usb.usbDebugEvent % USB_DEBUG_COUNT;
+
+	for (int i = 0; i < USB_DEBUG_COUNT; ++i) {
+		if (usb.usbDebug[evNo].Interrupt != 0) {
+			uartSendStr(IntToString(usb.usbDebug[evNo].eventNo) + ","
+					+ HexToString(usb.usbDebug[evNo].Interrupt, false) + ","
+					+ HexToString(usb.usbDebug[evNo].IntData, false) + ","
+					+ IntToString(usb.usbDebug[evNo].endpoint) + ","
+					+ HexByte(usb.usbDebug[evNo].Request.mRequest) + ", "
+					+ HexByte(usb.usbDebug[evNo].Request.Request) + ", "
+					+ HexByte(usb.usbDebug[evNo].Request.Value) + ", "
+					+ HexByte(usb.usbDebug[evNo].Request.Index) + ", "
+					+ HexByte(usb.usbDebug[evNo].Request.Length) + ", "
+					+ HexByte(usb.usbDebug[evNo].PacketSize) + ", "
+					+ HexToString(usb.usbDebug[evNo].xferBuff0, false) + ", "
+					+ HexToString(usb.usbDebug[evNo].xferBuff1, false) + "\n");
+		}
+		evNo = (evNo + 1) % USB_DEBUG_COUNT;
 	}
+	uint8_t testdata[] = "Test Data\n";
+	//usb.SendData((uint8_t*)loopback.c_str(), loopback.length());
 }
 
 void usbSerialdata(uint8_t* datain, uint32_t size) {
-//	uartSendStr(IntToString(size) + ":" + HexToString(datain[0], true) + "\n");
 	uartSendStr(IntToString(size) + ":" + std::string((char*)datain, size) + "\n");
 }
 
@@ -124,7 +128,7 @@ int main(void)
 				if (uartCmd[c] == 10) {
 					//can.pendingCmd = ss.str();
 					//uartSendString("Received: " + ss.str());
-					dumpArray();
+					dumpArray("Received: " + ss.str());
 					break;
 				}
 				else
