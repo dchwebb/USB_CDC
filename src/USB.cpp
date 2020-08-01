@@ -768,18 +768,19 @@ void USB::USB_EP0StartXfer(bool is_in, uint8_t epnum, uint32_t xfer_len)
 	if (is_in) {
 		USBx_INEP(epnum)->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_PKTCNT);
 		USBx_INEP(epnum)->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_XFRSIZ);
-		USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (1U << 19));
+		//USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (1U << 19));
 
 		if (xfer_len > 0) {
 			uint32_t maxPacket = (epnum == 0 ? ep0_maxPacket : ep_maxPacket);
 
 			// Program the transfer size and packet count as follows: xfersize = N * maxpacket + short_packet pktcnt = N + (short_packet exist ? 1 : 0)
-			if (xfer_len > maxPacket) {		// currently set to 0x40
+			if (xfer_len > maxPacket && epnum == 0) {		// currently set to 0x40
 				xfer_rem = xfer_len - maxPacket;
 				xfer_len = maxPacket;
 			}
+			USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (((xfer_len + maxPacket - 1) / maxPacket) << 19));
 
-			USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (1U << 19));
+			//USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (1U << 19));
 			USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_XFRSIZ & xfer_len);
 		}
 
@@ -793,8 +794,8 @@ void USB::USB_EP0StartXfer(bool is_in, uint8_t epnum, uint32_t xfer_len)
 	else // OUT endpoint
 	{
 		// Program the transfer size and packet count as follows: pktcnt = N xfersize = N * maxpacket
-		USBx_OUTEP(epnum)->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_XFRSIZ);
-		USBx_OUTEP(epnum)->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_PKTCNT);
+		//USBx_OUTEP(epnum)->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_XFRSIZ);
+		//USBx_OUTEP(epnum)->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_PKTCNT);
 
 		USBx_OUTEP(epnum)->DOEPTSIZ |= (USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19));
 		USBx_OUTEP(epnum)->DOEPTSIZ |= (USB_OTG_DOEPTSIZ_XFRSIZ & xfer_len);

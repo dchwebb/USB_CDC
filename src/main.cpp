@@ -27,7 +27,7 @@ uint32_t debugClock = 0;
 uint32_t debugClDiff = 0;
 
 volatile uint8_t uartCmdPos = 0;
-volatile char uartCmd[50];
+volatile char uartCmd[100];
 volatile bool uartCmdRdy = false;
 
 extern "C" {
@@ -123,7 +123,7 @@ int main(void)
 		// Check if a UART command has been received
 		if (uartCmdRdy) {
 			std::stringstream ss;
-			for (uint8_t c = 0; c < 22; ++c) {
+			for (uint8_t c = 0; c < 100; ++c) {
 				if (uartCmd[c] == 10) {
 					//can.pendingCmd = ss.str();
 					//uartSendString("Received: " + ss.str());

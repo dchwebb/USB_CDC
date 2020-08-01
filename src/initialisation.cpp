@@ -202,9 +202,10 @@ void InitUART() {
 	GPIOD->MODER |= GPIO_MODER_MODER9_1;			// Set alternate function on PA10
 	GPIOD->AFR[1] |= 7 << GPIO_AFRH_AFSEL9_Pos;		// Alternate function on PD9 for UART3_RX is AF7
 
-	int Baud = (SystemCoreClock / 4) / (16 * 250000);		// NB must be an integer or timing will be out
+	int Baud = (SystemCoreClock / 4) / (16 * 230400);		// NB must be an integer or timing will be out
 	//int Baud = (SystemCoreClock / 4) / (16 * 31250);
 	USART3->BRR |= Baud << 4;						// Baud Rate (called USART_BRR_DIV_Mantissa) = (Sys Clock: 180MHz / APB1 Prescaler DIV4: 45MHz) / (16 * 31250) = 90
+	USART3->BRR |= 12;								// Fraction: (144MHz / 4) / (16 * 230400) = 9.765625: multiply remainder by 16: 16 * .765625 = 12.25
 	USART3->CR1 &= ~USART_CR1_M;					// Clear bit to set 8 bit word length
 	USART3->CR1 |= USART_CR1_RE;					// Receive enable
 	USART3->CR1 |= USART_CR1_TE;					// Transmitter enable
@@ -216,6 +217,7 @@ void InitUART() {
 
 	USART3->CR1 |= USART_CR1_UE;					// USART Enable
 
+	//
 }
 
 void uartSendChar(char c) {
