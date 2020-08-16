@@ -111,8 +111,6 @@ void USB::USBInterruptHandler() {		// In Drivers\STM32F4xx_HAL_Driver\Src\stm32f
 	if ((USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK) == 0)
 		return;
 
-	//int tempint = USB_OTG_FS->GINTSTS & USB_OTG_FS->GINTMSK;
-
 
 	///////////		10			RXFLVL: RxQLevel Interrupt:  Rx FIFO non-empty Indicates that there is at least one packet pending to be read from the Rx FIFO.
 	if (USB_ReadInterrupts(USB_OTG_GINTSTS_RXFLVL))
@@ -176,9 +174,11 @@ void USB::USBInterruptHandler() {		// In Drivers\STM32F4xx_HAL_Driver\Src\stm32f
 						ep0_state = USBD_EP0_IDLE;
 						USBx_OUTEP(epnum)->DOEPCTL |= USB_OTG_DOEPCTL_STALL;
 					} else {
-						//uint32_t usbData = *xfer_buff;
+						/*// Add buffer contents to midiArray
+						midiArray[midiEventWrite++].data = *xfer_buff;
+						if (midiEventWrite >= MIDIBUFFERSIZE)	midiEventWrite = 0;
+*/
 						USB_EP0StartXfer(DIR_OUT, epnum, xfer_count);
-
 						dataHandler((uint8_t*)xfer_buff, xfer_count);
 					}
 				}
@@ -763,26 +763,20 @@ void USB::USBD_StdDevReq(usbRequest req)
 
 void USB::USB_EP0StartXfer(bool is_in, uint8_t epnum, uint32_t xfer_len)
 {
-
 	// IN endpoint
 	if (is_in) {
 		USBx_INEP(epnum)->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_PKTCNT);
 		USBx_INEP(epnum)->DIEPTSIZ &= ~(USB_OTG_DIEPTSIZ_XFRSIZ);
-		//USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (1U << 19));
 
-		if (xfer_len > 0) {
-			uint32_t maxPacket = (epnum == 0 ? ep0_maxPacket : ep_maxPacket);
+		uint32_t maxPacket = (epnum == 0 ? ep0_maxPacket : ep_maxPacket);
 
-			// Program the transfer size and packet count as follows: xfersize = N * maxpacket + short_packet pktcnt = N + (short_packet exist ? 1 : 0)
-			if (xfer_len > maxPacket && epnum == 0) {		// currently set to 0x40
-				xfer_rem = xfer_len - maxPacket;
-				xfer_len = maxPacket;
-			}
-			USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (((xfer_len + maxPacket - 1) / maxPacket) << 19));
-
-			//USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (1U << 19));
-			USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_XFRSIZ & xfer_len);
+		// Program the transfer size and packet count as follows: xfersize = N * maxpacket + short_packet pktcnt = N + (short_packet exist ? 1 : 0)
+		if (xfer_len > maxPacket && epnum == 0) {		// currently set to 0x40
+			xfer_rem = xfer_len - maxPacket;
+			xfer_len = maxPacket;
 		}
+		USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_PKTCNT & (((xfer_len + maxPacket - 1) / maxPacket) << 19));
+		USBx_INEP(epnum)->DIEPTSIZ |= (USB_OTG_DIEPTSIZ_XFRSIZ & xfer_len);
 
 		USBx_INEP(epnum)->DIEPCTL |= (USB_OTG_DIEPCTL_CNAK | USB_OTG_DIEPCTL_EPENA);	// EP enable, IN data in FIFO
 
@@ -790,19 +784,16 @@ void USB::USB_EP0StartXfer(bool is_in, uint8_t epnum, uint32_t xfer_len)
 		if (xfer_len > 0) {
 			USBx_DEVICE->DIEPEMPMSK |= 1UL << (epnum & EP_ADDR_MSK);
 		}
-	}
-	else // OUT endpoint
-	{
+	} else { 		// OUT endpoint
 		// Program the transfer size and packet count as follows: pktcnt = N xfersize = N * maxpacket
-		//USBx_OUTEP(epnum)->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_XFRSIZ);
-		//USBx_OUTEP(epnum)->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_PKTCNT);
+		USBx_OUTEP(epnum)->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_XFRSIZ);
+		USBx_OUTEP(epnum)->DOEPTSIZ &= ~(USB_OTG_DOEPTSIZ_PKTCNT);
 
 		USBx_OUTEP(epnum)->DOEPTSIZ |= (USB_OTG_DOEPTSIZ_PKTCNT & (1U << 19));
 		USBx_OUTEP(epnum)->DOEPTSIZ |= (USB_OTG_DOEPTSIZ_XFRSIZ & xfer_len);
 
 		USBx_OUTEP(epnum)->DOEPCTL |= (USB_OTG_DOEPCTL_CNAK | USB_OTG_DOEPCTL_EPENA);		// EP enable
 	}
-
 }
 
 void USB::USBD_CtlError() {
@@ -855,14 +846,4 @@ void USB::SendData(const uint8_t *data, uint16_t len) {
 	}
 }
 
-/*void USB::SendReport(uint8_t *report, uint16_t len) {
-	if (dev_state == USBD_STATE_CONFIGURED) {
-		if (!transmitting) {
-			transmitting = true;
-			outBuff = report;
-			outBuffSize = len;
-			USB_EP0StartXfer(DIR_IN, 1, len);
-		}
-	}
-}*/
 
