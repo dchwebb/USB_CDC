@@ -17,6 +17,7 @@ uint16_t noteOnTest = 0;
 volatile uint32_t SysTickVal;
 
 bool noteDown = false;
+bool dumped = false;
 
 MidiData midiArray[MIDIBUFFERSIZE];		// for debugging
 MidiHandler midiHandler;
@@ -36,7 +37,7 @@ extern "C" {
 
 
 
-std::string IntToString(const int32_t& v) {
+/*std::string IntToString(const int32_t& v) {
 	std::stringstream ss;
 	ss << v;
 	return ss.str();
@@ -63,32 +64,32 @@ void uartSendStr(const std::string& s) {
 		while ((USART3->SR & USART_SR_TXE) == 0);
 		USART3->DR = c;
 	}
-}
+}*/
 
-void dumpArray(std::string loopback) {
-	usb.SendData((uint8_t*)loopback.c_str(), loopback.length());
-
-	uartSendStr("Event,Interrupt,Int Data,Endpoint,mRequest,Request,Value,Index,Length,PacketSize,XferBuff0,XferBuff1\n");
-	uint16_t evNo = usb.usbDebugEvent % USB_DEBUG_COUNT;
-
-	for (int i = 0; i < USB_DEBUG_COUNT; ++i) {
-		if (usb.usbDebug[evNo].Interrupt != 0) {
-			uartSendStr(IntToString(usb.usbDebug[evNo].eventNo) + ","
-					+ HexToString(usb.usbDebug[evNo].Interrupt, false) + ","
-					+ HexToString(usb.usbDebug[evNo].IntData, false) + ","
-					+ IntToString(usb.usbDebug[evNo].endpoint) + ","
-					+ HexByte(usb.usbDebug[evNo].Request.mRequest) + ", "
-					+ HexByte(usb.usbDebug[evNo].Request.Request) + ", "
-					+ HexByte(usb.usbDebug[evNo].Request.Value) + ", "
-					+ HexByte(usb.usbDebug[evNo].Request.Index) + ", "
-					+ HexByte(usb.usbDebug[evNo].Request.Length) + ", "
-					+ HexByte(usb.usbDebug[evNo].PacketSize) + ", "
-					+ HexToString(usb.usbDebug[evNo].xferBuff0, false) + ", "
-					+ HexToString(usb.usbDebug[evNo].xferBuff1, false) + "\n");
-		}
-		evNo = (evNo + 1) % USB_DEBUG_COUNT;
-	}
-}
+//void dumpArray(std::string loopback) {
+//	usb.SendData((uint8_t*)loopback.c_str(), loopback.length());
+//
+//	uartSendStr("Event,Interrupt,Int Data,Endpoint,mRequest,Request,Value,Index,Length,PacketSize,XferBuff0,XferBuff1\n");
+//	uint16_t evNo = usb.usbDebugEvent % USB_DEBUG_COUNT;
+//
+//	for (int i = 0; i < USB_DEBUG_COUNT; ++i) {
+//		if (usb.usbDebug[evNo].Interrupt != 0) {
+//			uartSendStr(IntToString(usb.usbDebug[evNo].eventNo) + ","
+//					+ HexToString(usb.usbDebug[evNo].Interrupt, false) + ","
+//					+ HexToString(usb.usbDebug[evNo].IntData, false) + ","
+//					+ IntToString(usb.usbDebug[evNo].endpoint) + ","
+//					+ HexByte(usb.usbDebug[evNo].Request.mRequest) + ", "
+//					+ HexByte(usb.usbDebug[evNo].Request.Request) + ", "
+//					+ HexByte(usb.usbDebug[evNo].Request.Value) + ", "
+//					+ HexByte(usb.usbDebug[evNo].Request.Index) + ", "
+//					+ HexByte(usb.usbDebug[evNo].Request.Length) + ", "
+//					+ HexByte(usb.usbDebug[evNo].PacketSize) + ", "
+//					+ HexToString(usb.usbDebug[evNo].xferBuff0, false) + ", "
+//					+ HexToString(usb.usbDebug[evNo].xferBuff1, false) + "\n");
+//		}
+//		evNo = (evNo + 1) % USB_DEBUG_COUNT;
+//	}
+//}
 
 void usbSerialdata(uint8_t* datain, uint32_t size) {
 	uartSendStr(IntToString(size) + ":" + std::string((char*)datain, size) + "\n");
@@ -104,30 +105,55 @@ int main(void)
 	InitSysTick();
 	usb.InitUSB();
 
+	// configure PC13 blue button
+	GPIOC->PUPDR &= ~GPIO_PUPDR_PUPDR13_0;			// Set pin to nothing:  01 Pull-up; 10 Pull-down; 11 Reserved
+	GPIOC->MODER &= ~GPIO_MODER_MODE13_Msk;
 
-//	dacHandler.initDAC();
+	// PB7 is LD2 Blue
+	GPIOB->MODER |= GPIO_MODER_MODER7_0;			// Set to output
 
-//	cfg.RestoreConfig();
-//	midiHandler.setConfig();
-
-	// Bind the usb.dataHandler function to the midiHandler's event handler
-	//usb.dataHandler = std::bind(&MidiHandler::eventHandler, &midiHandler, std::placeholders::_1);
-
-	usb.dataHandler = std::bind(usbSerialdata, std::placeholders::_1, std::placeholders::_2);
+	usb.cdcDataHandler = std::bind(usbSerialdata, std::placeholders::_1, std::placeholders::_2);
 
 	while (1)
 	{
 //		midiHandler.gateTimer();
 //		cfg.SaveConfig();		// Checks if configuration change is pending a save
 
+		if (GPIOC->IDR & GPIO_IDR_ID13 && dumped == 0) {
+			GPIOB->ODR |= GPIO_ODR_OD7;
+			dumped = 1;
+			usb.OutputDebug();
+		} else {
+			GPIOB->ODR &= ~GPIO_ODR_OD7;
+			dumped = 0;
+		}
+
+
 		// Check if a UART command has been received
 		if (uartCmdRdy) {
 			std::stringstream ss;
 			for (uint8_t c = 0; c < 100; ++c) {
 				if (uartCmd[c] == 10) {
-					//can.pendingCmd = ss.str();
-					//uartSendString("Received: " + ss.str());
-					dumpArray("Received: " + ss.str());
+					if (ss.str().compare("x") == 0) {
+						const char* transmit = "0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"
+								;
+						usb.SendData((uint8_t*)transmit, strlen(transmit), usb.CDC_In);
+
+					} else {
+						usb.SendData((uint8_t*)uartCmd, c, usb.CDC_In);
+					}
 					break;
 				}
 				else

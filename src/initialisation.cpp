@@ -191,7 +191,7 @@ void InitEncoders() {
 
 }
 
-void InitUART() {
+/*void InitUART() {
 	// 446 Nucleo uses PD8 (TX) PD9 (RX) for USART3
 
 	RCC->APB1ENR |= RCC_APB1ENR_USART3EN;			// UART clock enable
@@ -218,7 +218,7 @@ void InitUART() {
 	USART3->CR1 |= USART_CR1_UE;					// USART Enable
 
 	//
-}
+}*/
 
 void uartSendChar(char c) {
 	while ((USART3->SR & USART_SR_TXE) == 0);
